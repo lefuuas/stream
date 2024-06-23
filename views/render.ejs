@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>View Images for <%= ip %></title>
+  <title>Ver Imagens para <%= ip %></title>
   <style>
     body {
-      font-family: Arial, sans-serif;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -17,6 +17,7 @@
     }
     h1 {
       margin-bottom: 20px;
+      color: #333;
     }
     .images {
       display: flex;
@@ -24,19 +25,23 @@
       justify-content: center;
     }
     .images img {
-      max-width: 200px;
+      max-width: 1000px;
       margin: 10px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
+      border: 2px solid #4caf50;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     }
     .terminal {
-      background-color: #333;
-      color: #fff;
-      padding: 10px;
-      border-radius: 5px;
+      background-color: #282c34;
+      color: #61dafb;
+      padding: 20px;
+      border-radius: 10px;
       margin-top: 20px;
-      width: 400px;
+      width: 600px;
       max-width: 100%;
+      max-height: 400px;
+      overflow-y: auto;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     }
     .input-container {
       display: flex;
@@ -44,34 +49,36 @@
     }
     .input-container input {
       flex: 1;
-      padding: 5px;
-      margin-right: 10px;
+      padding: 10px;
+      border: 2px solid #61dafb;
+      border-radius: 5px;
+      font-size: 14px;
     }
     .button {
-      background-color: #4caf50;
+      background-color: #61dafb;
       border: none;
       color: white;
-      padding: 7px 15px;
+      padding: 10px 20px;
       text-align: center;
       text-decoration: none;
       display: inline-block;
-      font-size: 12px;
-      margin: 4px 2px;
+      font-size: 14px;
+      margin-left: 10px;
       cursor: pointer;
       border-radius: 5px;
     }
   </style>
 </head>
 <body>
-  <h1>Images for <%= ip %></h1>
+  <h1>Imagens para <%= ip %></h1>
   <div class="images">
-    <img id="renderImage" src="/render-image/<%= ip %>" alt="Render Image">
+    <img id="renderImage" src="/render-image/<%= ip %>" alt="Imagem Renderizada">
   </div>
   <div class="terminal" id="terminal">
-    <div id="terminalOutput">Terminal output will appear here...</div>
+    <div id="terminalOutput">A saída do terminal aparecerá aqui...</div>
     <div class="input-container">
-      <input type="text" id="commandInput" placeholder="Enter a command">
-      <button class="button" onclick="executeCommand()">Execute</button>
+      <input type="text" id="commandInput" placeholder="Digite um comando">
+      <button class="button" onclick="executeCommand()">Executar</button>
     </div>
   </div>
   <script>
@@ -84,14 +91,18 @@
       newImg.src = '/render-image/<%= ip %>?' + new Date().getTime();
     }
     
-    setInterval(updateImage, 100);
+    // Atualiza a cada 1 segundo (1000ms)
+    setInterval(updateImage, 1000);
+
+    // Carregar imagem inicialmente
+    updateImage();
     
     function executeCommand() {
       var commandInput = document.getElementById('commandInput');
       var command = commandInput.value;
-      console.log('Executing command:', command);
-      commandInput.value = ''; // Clear the input
-      // Send the command to the server
+      console.log('Executando comando:', command);
+      commandInput.value = ''; // Limpar a entrada
+      // Enviar o comando para o servidor
       fetch('/send-command', {
         method: 'POST',
         headers: {
@@ -101,44 +112,44 @@
       })
       .then(response => {
         if (response.ok) {
-          console.log('Command sent successfully.');
-          // Append the command to the terminal output
+          console.log('Comando enviado com sucesso.');
+          // Adicionar o comando ao terminal
           var terminalOutput = document.getElementById('terminalOutput');
           terminalOutput.innerHTML += '<div>$ ' + command + '</div>';
         } else {
-          console.error('Failed to send command:', response.statusText);
+          console.error('Falha ao enviar comando:', response.statusText);
         }
       })
-      .catch(error => console.error('Error sending command:', error));
+      .catch(error => console.error('Erro ao enviar comando:', error));
     }
     
-    // Function to append output to the terminal
+    // Função para adicionar a saída ao terminal
     function appendToTerminal(output) {
       var terminalOutput = document.getElementById('terminalOutput');
       terminalOutput.innerHTML += '<div>' + output + '</div>';
+      terminalOutput.scrollTop = terminalOutput.scrollHeight; // Manter o scroll no final
     }
     
-    // Function to continuously fetch results from the server
+    // Função para buscar continuamente os resultados do servidor
     function fetchResults() {
       fetch('/result-executed')
       .then(response => {
         if (response.ok) {
           return response.text();
         } else {
-          throw new Error('Failed to fetch result');
+          throw new Error('Falha ao buscar resultado');
         }
       })
       .then(result => {
         if (result) {
-          console.log('Result received:', result);
-          appendToTerminal(result); // Append the result to the terminal output
+          console.log('Resultado recebido:', result);
+          appendToTerminal(result); // Adicionar o resultado ao terminal
         }
       })
-      .catch(error => console.error('Error fetching result:', error))
-      .finally(() => setTimeout(fetchResults, 2000)); // Fetch again after 2 seconds
+      .catch(error => console.error('Erro ao buscar resultado:', error))
+      .finally(() => setTimeout(fetchResults, 1000)); // Buscar novamente após 1 segundo
     }
     
-    // Start fetching results when the page loads
     fetchResults();
   </script>
 </body>

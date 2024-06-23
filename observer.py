@@ -77,7 +77,7 @@ while True:
                 receive_result_from_api(result)
         
         # Espera 5 segundos antes de capturar a próxima tela
-        time.sleep(2)
+        
         
     except KeyboardInterrupt:
         print('Script interrompido.')
