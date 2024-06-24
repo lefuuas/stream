@@ -16,7 +16,7 @@ if (!fs.existsSync(uploadFolder)) {
 }
 
 let ipCounter = 1;
-const generateIP = () => `192.450.34.${ipCounter++}`;
+const generateIP = () => `192.168.50.${ipCounter++}`;
 
 app.get('/new-ip', (req, res) => {
   const newIP = generateIP();

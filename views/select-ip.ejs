@@ -16,9 +16,9 @@
       background-color: #f0f0f0;
       margin: 0;
       padding: 20px;
+      color: #333;
     }
     h1 {
-      color: #333;
       margin-bottom: 20px;
     }
     .search-container {
@@ -38,10 +38,23 @@
     .search-container button {
       padding: 10px;
       border: none;
-      background-color: #4caf50;
+      background-color: #306932;
       color: white;
       cursor: pointer;
       border-radius: 0 5px 5px 0;
+    }
+    label{
+     
+      padding: 10px;
+      border: none;
+      background-color: #306932;
+      color: white;
+      cursor: pointer;
+      border-radius: 0 5px 5px 0;
+    
+    }
+    label:hover {
+      background-color: #45a049;
     }
     .search-container button:hover {
       background-color: #45a049;
@@ -79,8 +92,9 @@
 <body>
   <h1>Selecionar IP</h1>
   <div class="search-container">
+    <label for="searchInput" class="visually-hidden">Buscar IP</label>
     <input type="text" id="searchInput" placeholder="Buscar IP">
-    <button onclick="searchIP()"><i class="fas fa-search"></i></button>
+    <button onclick="searchIP()" aria-label="Buscar"><i class="fas fa-search"></i></button>
   </div>
   <ul id="ipList">
     <% ips.forEach(ip => { %>

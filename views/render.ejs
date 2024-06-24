@@ -14,10 +14,11 @@
       background-color: #f0f0f0;
       margin: 0;
       padding: 20px;
+      color: #333;
     }
     h1 {
       margin-bottom: 20px;
-      color: #333;
+      color: #222; /* Aumentando contraste */
     }
     .images {
       display: flex;
@@ -32,8 +33,8 @@
       box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     }
     .terminal {
-      background-color: #282c34;
-      color: #61dafb;
+      background-color: #1e1e1e; /* Aumentando contraste */
+      color: #ffffff; /* Aumentando contraste */
       padding: 20px;
       border-radius: 10px;
       margin-top: 20px;
@@ -46,16 +47,22 @@
     .input-container {
       display: flex;
       margin-top: 10px;
+      align-items: center;
     }
     .input-container input {
       flex: 1;
       padding: 10px;
-      border: 2px solid #61dafb;
+      border: 2px solid #4caf50; /* Aumentando contraste */
       border-radius: 5px;
       font-size: 14px;
+      color: #333; /* Aumentando contraste */
+      background-color: #fff; /* Aumentando contraste */
+    }
+    .input-container input::placeholder {
+      color: #666; /* Aumentando contraste */
     }
     .button {
-      background-color: #61dafb;
+      background-color: #2f6d31; /* Aumentando contraste */
       border: none;
       color: white;
       padding: 10px 20px;
@@ -67,18 +74,37 @@
       cursor: pointer;
       border-radius: 5px;
     }
+    .button:hover {
+      background-color: #45a049;
+    }
+    .status {
+      margin-left: 10px;
+      padding: 10px;
+      border-radius: 5px;
+      font-size: 14px;
+      color: #fff;
+    }
+    .status-success {
+      background-color: #4caf50;
+    }
+    .status-fail {
+      background-color: #f44336;
+    }
   </style>
 </head>
 <body>
   <h1>Imagens para <%= ip %></h1>
   <div class="images">
-    <img id="renderImage" src="/render-image/<%= ip %>" alt="Imagem Renderizada">
+    <img id="renderImage" src="/render-image/<%= ip %>" alt="Imagem Renderizada para <%= ip %>">
   </div>
-  <div class="terminal" id="terminal">
+  <div class="terminal" id="terminal" aria-live="polite">
     <div id="terminalOutput">A saída do terminal aparecerá aqui...</div>
     <div class="input-container">
-      <input type="text" id="commandInput" placeholder="Digite um comando">
+      <label for="commandInput" class="visually-hidden">Digite um comando</label>
+      <input type="text" id="commandInput" placeholder="Digite um comando:  ">
       <button class="button" onclick="executeCommand()">Executar</button>
+      <button class="button" onclick="clearConsole()">Limpar</button>
+      <div id="commandStatus" class="status"></div>
     </div>
   </div>
   <script>
@@ -91,18 +117,14 @@
       newImg.src = '/render-image/<%= ip %>?' + new Date().getTime();
     }
     
-    // Atualiza a cada 1 segundo (1000ms)
     setInterval(updateImage, 1000);
-
-    // Carregar imagem inicialmente
     updateImage();
     
     function executeCommand() {
       var commandInput = document.getElementById('commandInput');
       var command = commandInput.value;
       console.log('Executando comando:', command);
-      commandInput.value = ''; // Limpar a entrada
-      // Enviar o comando para o servidor
+      commandInput.value = '';
       fetch('/send-command', {
         method: 'POST',
         headers: {
@@ -111,26 +133,38 @@
         body: JSON.stringify({ cmd: command })
       })
       .then(response => {
+        var commandStatus = document.getElementById('commandStatus');
         if (response.ok) {
           console.log('Comando enviado com sucesso.');
-          // Adicionar o comando ao terminal
+          commandStatus.textContent = 'Comando executado com sucesso';
+          commandStatus.className = 'status status-success';
           var terminalOutput = document.getElementById('terminalOutput');
           terminalOutput.innerHTML += '<div>$ ' + command + '</div>';
         } else {
           console.error('Falha ao enviar comando:', response.statusText);
+          commandStatus.textContent = 'Falha ao executar comando';
+          commandStatus.className = 'status status-fail';
         }
       })
-      .catch(error => console.error('Erro ao enviar comando:', error));
+      .catch(error => {
+        console.error('Erro ao enviar comando:', error);
+        var commandStatus = document.getElementById('commandStatus');
+        commandStatus.textContent = 'Erro ao enviar comando';
+        commandStatus.className = 'status status-fail';
+      });
     }
     
-    // Função para adicionar a saída ao terminal
+    function clearConsole() {
+      var terminalOutput = document.getElementById('terminalOutput');
+      terminalOutput.innerHTML = '';
+    }
+    
     function appendToTerminal(output) {
       var terminalOutput = document.getElementById('terminalOutput');
       terminalOutput.innerHTML += '<div>' + output + '</div>';
-      terminalOutput.scrollTop = terminalOutput.scrollHeight; // Manter o scroll no final
+      terminalOutput.scrollTop = terminalOutput.scrollHeight;
     }
     
-    // Função para buscar continuamente os resultados do servidor
     function fetchResults() {
       fetch('/result-executed')
       .then(response => {
@@ -143,11 +177,11 @@
       .then(result => {
         if (result) {
           console.log('Resultado recebido:', result);
-          appendToTerminal(result); // Adicionar o resultado ao terminal
+          appendToTerminal(result);
         }
       })
       .catch(error => console.error('Erro ao buscar resultado:', error))
-      .finally(() => setTimeout(fetchResults, 1000)); // Buscar novamente após 1 segundo
+      .finally(() => setTimeout(fetchResults, 1000));
     }
     
     fetchResults();
