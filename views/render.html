@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Machines Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f8fb;
+            color: #333;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-top: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #fff;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table th, table td {
+            padding: 15px;
+            text-align: left;
+            border: 1px solid #e1e1e1;
+        }
+        table th {
+            background-color: #3498db;
+            color: #fff;
+        }
+        .status {
+            display: flex;
+            align-items: center;
+        }
+        .status .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        .online .dot {
+            background-color: #2ecc71;
+        }
+        .offline .dot {
+            background-color: #e74c3c;
+        }
+        .expand-button {
+            background-color: #3498db;
+            color: #fff;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .expand-button:hover {
+            background-color: #2980b9;
+        }
+        .details {
+            display: none;
+            background-color: #ecf0f1;
+            border-radius: 5px;
+            margin-top: 10px;
+            padding: 10px;
+        }
+        .details pre {
+            margin: 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Machines Dashboard</h1>
+    <div class="container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Branch</th>
+                    <th>tipo</th>
+                    <th>Ping</th>
+                    <th>Detalhes</th>
+                </tr>
+            </thead>
+            <tbody id="machines-table">
+                <!-- Rows will be populated dynamically -->
+            </tbody>
+        </table>
+
+        <h2>Programa Uso</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Programa</th>
+                    <th>tempo de uso (s)</th>
+                    <th>Windows</th>
+                    <th>detalhes</th>
+                </tr>
+            </thead>
+            <tbody id="programs-table">
+                <!-- Program rows will be populated dynamically -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const machinesTableBody = document.getElementById('machines-table');
+        const programsTableBody = document.getElementById('programs-table');
+
+        // Função para buscar as informações das máquinas
+        function fetchMachineData() {
+            fetch('http://localhost:3000/machines')  // Substitua com a URL da sua API
+                .then(response => response.json())
+                .then(data => {
+                    updateMachineTable(data);
+                })
+                .catch(error => console.error('Error fetching machine data:', error));
+        }
+
+        // Função para buscar as informações dos programas
+        function fetchProgramsUsage() {
+            fetch('http://localhost:3000/get-usage?token=08c8d94a-da2d-449b-999e-71cc75cfff2a&date=2024-12-02')
+                .then(response => response.json())
+                .then(data => {
+                    updateProgramsTable(data);
+                })
+                .catch(error => console.error('Error fetching program data:', error));
+        }
+
+        // Função para atualizar a tabela de máquinas
+        function updateMachineTable(machines) {
+            machinesTableBody.innerHTML = '';  // Limpa a tabela antes de adicionar novas linhas
+
+            machines.forEach(machine => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>
+                        <div class="status ${machine.isOnline ? 'online' : 'offline'}">
+                            <div class="dot"></div>
+                            ${machine.isOnline ? 'Online' : 'Offline'}
+                        </div>
+                    </td>
+                    <td>${machine.branch}</td>
+                    <td>${machine.tipo}</td>
+                    <td>${new Date(machine.lastPing).toLocaleString()}</td>
+                    <td><button class="expand-button" onclick="toggleMachineDetails(this)">Expand</button></td>
+                `;
+                machinesTableBody.appendChild(row);
+
+                
+                const detailsRow = document.createElement('tr');
+                detailsRow.innerHTML = `
+                    <td colspan="5">
+                        <div class="details">
+                            <pre>${JSON.stringify(machine, null, 2)}</pre>
+                        </div>
+                    </td>
+                `;
+                machinesTableBody.appendChild(detailsRow);
+            });
+        }
+
+        
+        function toggleMachineDetails(button) {
+            const detailsDiv = button.closest('tr').nextSibling.querySelector('.details');
+            detailsDiv.style.display = detailsDiv.style.display === 'none' || !detailsDiv.style.display ? 'block' : 'none';
+        }
+
+        
+        function updateProgramsTable(programs) {
+            programsTableBody.innerHTML = '';  
+
+            programs.forEach(program => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${program.programName}</td>
+                    <td>${program.usageTime}</td>
+                    <td>
+                        <ul>
+                            ${program.windows.map(window => `<li>${window.windowTitle} - ${window.usageTime}s</li>`).join('')}
+                        </ul>
+                    </td>
+                    <td><button class="expand-button" onclick="toggleProgramDetails(this)">Expand</button></td>
+                `;
+                programsTableBody.appendChild(row);
+
+                
+                const detailsRow = document.createElement('tr');
+                detailsRow.innerHTML = `
+                    <td colspan="4">
+                        <div class="details">
+                            <pre>${JSON.stringify(program, null, 2)}</pre>
+                        </div>
+                    </td>
+                `;
+                programsTableBody.appendChild(detailsRow);
+            });
+        }
+
+       
+        function toggleProgramDetails(button) {
+            const detailsDiv = button.closest('tr').nextSibling.querySelector('.details');
+            detailsDiv.style.display = detailsDiv.style.display === 'none' || !detailsDiv.style.display ? 'block' : 'none';
+        }
+
+        
+        setInterval(() => {
+            fetchMachineData();
+            fetchProgramsUsage();
+        }, 10000);
+
+       
+        fetchMachineData();
+        fetchProgramsUsage();
+    </script>
+</body>
+</html>
