@@ -1,130 +1,400 @@
 const express = require('express');
-const multer = require('multer');
-const fs = require('fs');
-const path = require('path');
-
+const sqlite3 = require('sqlite3').verbose();
+const uuidv4 = require('uuid');
+const cors = require('cors')
 const app = express();
-const uploadFolder = path.join(__dirname, 'uploads');
-let command = '';
-let resultado = '';
 
-app.use(express.static('public'));
 app.use(express.json());
+app.use(cors());
 
-if (!fs.existsSync(uploadFolder)) {
-  fs.mkdirSync(uploadFolder);
+
+// Inicializa o banco SQLite
+const db = new sqlite3.Database('machines.db', (err) => {
+  if (err) console.error('Erro ao conectar ao SQLite:', err);
+  else console.log('Banco de dados SQLite conectado.');
+});
+
+// Cria a tabela de máquinas, se não existir
+db.run(`
+  CREATE TABLE IF NOT EXISTS machines (
+    token TEXT PRIMARY KEY,
+    tipo TEXT,
+    branch TEXT,
+    login TEXT,
+    senha TEXT,
+    lastPing TEXT,
+    info TEXT,
+    resources TEXT,
+    lastCommand TEXT,
+    commandTimestamp TEXT, /* Adicionado para controlar o tempo do comando */
+    commandResult TEXT,
+    message TEXT /* Adicionado para armazenar mensagens enviadas */
+  )
+`);
+
+db.run(`
+  CREATE TABLE IF NOT EXISTS program_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token TEXT,
+    program_name TEXT,
+    window_title TEXT,
+    usage_time INTEGER, -- Tempo de uso em segundos
+    timestamp TEXT
+  )
+`);
+function saveProgramUsage(token, programName, windowTitle, usageTime) {
+  const timestamp = new Date().toISOString();
+  
+  db.run(
+    `INSERT INTO program_usage (token, program_name, window_title, usage_time, timestamp) 
+     VALUES (?, ?, ?, ?, ?)`,
+    [token, programName, windowTitle, usageTime, timestamp],
+    (err) => {
+      if (err) console.error('Erro ao salvar uso de programa:', err);
+    }
+  );
 }
 
-let ipCounter = 1;
-const generateIP = () => `192.168.50.${ipCounter++}`;
 
-app.get('/new-ip', (req, res) => {
-  const newIP = generateIP();
-  const ipFolder = path.join(uploadFolder, newIP);
-  if (!fs.existsSync(ipFolder)) {
-    fs.mkdirSync(ipFolder);
-  }
-  res.send({ ip: newIP });
-});
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const userIP = req.params.ip;
-    const ipFolder = path.join(uploadFolder, userIP);
-    if (!fs.existsSync(ipFolder)) {
-      fs.mkdirSync(ipFolder);
-    } else {
-      const existingFile = path.join(ipFolder, 'render.png');
-      if (fs.existsSync(existingFile)) {
-        fs.unlinkSync(existingFile);
-      }
+// Função para salvar uma máquina no banco de dados
+function saveMachine(token, machine) {
+  const {
+    tipo,
+    branch,
+    login,
+    senha,
+    lastPing,
+    info,
+    resources,
+    lastCommand,
+    commandTimestamp,
+    commandResult,
+    message
+  } = machine;
+  db.run(
+    `INSERT OR REPLACE INTO machines 
+      (token, tipo, branch, login, senha, lastPing, info, resources, lastCommand, commandTimestamp, commandResult, message)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [token, tipo, branch, login, senha, lastPing, info, resources, lastCommand, commandTimestamp, commandResult, message],
+    (err) => {
+      if (err) console.error('Erro ao salvar máquina:', err);
     }
-    cb(null, ipFolder);
-  },
-  filename: (req, file, cb) => {
-    cb(null, 'render.png');
-  }
-});
+  );
+}
 
-const upload = multer({ storage: storage });
-
-app.post('/upload/:ip', upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).send('arquivo nao enviado');
-  }
-  res.send('arquivo enviado com sucesso');
-});
-
-app.get('/render-image/:ip', (req, res) => {
-  const userIP = req.params.ip;
-  const ipFolder = path.join(uploadFolder, userIP);
-  const filePath = path.join(ipFolder, 'render.png');
-  if (fs.existsSync(filePath)) {
-    res.setHeader('Cache-Control', 'no-store'); // Adicionar header para evitar cache
-    res.sendFile(filePath);
-  } else {
-    res.status(404).send('imagem nao encontrada');
-  }
-});
-
-
-app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
-
-app.get('/render-html/:ip', (req, res) => {
-  const userIP = req.params.ip;
-  res.render('render', { ip: userIP });
-});
-
-app.get('/select-ip', (req, res) => {
-  fs.readdir(uploadFolder, (err, folders) => {
+// Função para carregar todas as máquinas na memória
+function loadMachines(callback) {
+  db.all('SELECT * FROM machines', (err, rows) => {
     if (err) {
-      return res.status(500).send('ao ler IP');
+      console.error('Erro ao carregar máquinas:', err);
+      callback({});
+    } else {
+      const machines = {};
+      rows.forEach((row) => {
+        machines[row.token] = {
+          tipo: row.tipo,
+          branch: row.branch,
+          login: row.login,
+          senha: row.senha,
+          lastPing: row.lastPing,
+          info: row.info,
+          resources: row.resources,
+          lastCommand: row.lastCommand,
+          commandTimestamp: row.commandTimestamp,
+          commandResult: row.commandResult,
+          message: row.message
+        };
+      });
+      callback(machines);
     }
-    res.render('select-ip', { ips: folders });
+  });
+}
+
+// Carrega máquinas do banco de dados na memória
+let machines = {};
+loadMachines((data) => {
+  machines = data;
+});
+
+// Rotas
+app.post('/register', (req, res) => {
+  const { tipo, branch, login, senha } = req.body;
+  const token = uuidv4.v4();
+
+  const machine = {
+    tipo,
+    branch,
+    login,
+    senha,
+    lastPing: new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }),
+    info: null,
+    resources: null,
+    lastCommand: null,
+    commandTimestamp: null,
+    commandResult: null,
+    message: null
+  };
+  machines[token] = machine;
+  saveMachine(token, machine);
+
+  res.send('Máquina registrada com sucesso.');
+});
+
+app.post('/login', (req, res) => {
+  const { login, senha } = req.body;
+  const token = Object.keys(machines).find(
+    (key) => machines[key].login === login && machines[key].senha === senha
+  );
+  if (!token) return res.status(404).send('Login ou senha inválidos.');
+
+  res.send(token);
+});
+
+app.post('/update', (req, res) => {
+  const { token, info, resources } = req.body;
+  if (!machines[token]) return res.status(404).send('Máquina não registrada.');
+
+  machines[token] = {
+    ...machines[token],
+    lastPing: new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }),
+    info: info || machines[token].info,
+    resources: resources || machines[token].resources
+  };
+  saveMachine(token, machines[token]);
+  res.send('Informações da máquina atualizadas.');
+});
+
+app.post('/command', (req, res) => {
+  const { token, command } = req.body;
+  if (!machines[token]) return res.status(404).send('Máquina não registrada.');
+  if (!command) return res.status(400).send('Comando não fornecido.');
+
+  machines[token].lastCommand = command;
+  machines[token].commandTimestamp = new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+  machines[token].commandResult = null;
+  saveMachine(token, machines[token]);
+  res.send('Comando enviado para a máquina.');
+});
+
+app.get('/get-command/:token', (req, res) => {
+  const token = req.params.token;
+  if (!machines[token]) return res.status(404).send('Máquina não encontrada.');
+
+  const commandTimestamp = machines[token].commandTimestamp;
+  const command = machines[token].lastCommand;
+
+  if (command && commandTimestamp) {
+    const elapsedTime = (new Date() - new Date(commandTimestamp)) / 1000;
+    if (elapsedTime > 6) {
+      machines[token].lastCommand = null;
+      machines[token].commandTimestamp = null;
+      saveMachine(token, machines[token]);
+      return res.send('');
+    }
+  }
+
+  machines[token].lastCommand = null;
+  machines[token].commandTimestamp = null;
+  saveMachine(token, machines[token]);
+  res.send(command || '');
+});
+
+app.post('/command-result', (req, res) => {
+  const { token, result } = req.body;
+  if (!machines[token]) return res.status(404).send('Máquina não registrada.');
+
+  machines[token].commandResult = result;
+  saveMachine(token, machines[token]);
+  res.send('Resultado do comando recebido.');
+});
+
+app.get('/command-result/:token', (req, res) => {
+  const token = req.params.token;
+  if (!machines[token]) return res.status(404).send('Máquina não encontrada.');
+
+  res.send(machines[token].commandResult || 'Nenhum resultado disponível.');
+});
+
+// Função para enviar a mensagem
+app.post('/send-message', (req, res) => {
+  const { token, message } = req.body;
+  if (!machines[token]) return res.status(404).send('Máquina não encontrada.');
+  if (!message) return res.status(400).send('Mensagem não fornecida.');
+
+  machines[token].message = message;
+  machines[token].messageTimestamp = new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }); // Armazenando a hora em que a mensagem foi enviada
+  saveMachine(token, machines[token]);
+  res.send('Mensagem enviada para a máquina.');
+});
+
+// Função para pegar a mensagem
+app.get('/get-message/:token', (req, res) => {
+  const token = req.params.token;
+  if (!machines[token]) return res.status(404).send('Máquina não encontrada.');
+
+  const machine = machines[token];
+  const messageTimestamp = machine.messageTimestamp;
+
+  if (messageTimestamp) {
+    const elapsedTime = (new Date() - new Date(messageTimestamp)) / 1000; // Tempo decorrido em segundos
+
+    if (elapsedTime > 6) {
+      // Se passou mais de 6 segundos, reseta a mensagem
+      machines[token].message = null;
+      machines[token].messageTimestamp = null;
+      saveMachine(token, machines[token]);
+      return res.send(''); // Não retorna nenhuma mensagem
+    }
+  }
+
+  const message = machine.message;
+  machines[token].message = null; // Reseta a mensagem após ser lida
+  machines[token].messageTimestamp = null; // Reseta o timestamp da mensagem
+  saveMachine(token, machines[token]);
+
+  res.send(message || ''); // Retorna a mensagem, ou string vazia se não houver mensagem
+});
+
+
+app.get('/machine/:token', (req, res) => {
+  const token = req.params.token;
+  if (!machines[token]) return res.status(404).send('Máquina não encontrada.');
+
+  const machine = machines[token];
+  const isOnline = new Date() - new Date(machine.lastPing) < 15000;
+
+  res.json({
+    token,
+    isOnline,
+    info: machine.info,
+    resources: machine.resources,
+    lastPing: machine.lastPing
   });
 });
 
-app.get('/view-images/:ip', (req, res) => {
-  const userIP = req.params.ip;
-  const ipFolder = path.join(uploadFolder, userIP);
-  const filePath = path.join(ipFolder, 'render.png');
-  if (fs.existsSync(filePath)) {
-    res.render('view-images', { ip: userIP, images: ['render.png'] });
-  } else {
-    res.status(404).send('IP nao encontrado.');
+app.get('/machines', (req, res) => {
+  const allMachines = Object.entries(machines).map(([token, data]) => ({
+    token,
+    isOnline: new Date() - new Date(data.lastPing) < 15000,
+    branch:data.branch,
+    tipo: data.tipo,
+    info: data.info,
+    resources: data.resources,
+    lastPing: data.lastPing
+  }));
+
+  res.json(allMachines);
+});
+app.post('/report-usage', (req, res) => {
+  const { token, programUsage } = req.body;
+  // console.log(req.body)
+
+  if (!machines[token]) return res.status(404).send('Máquina não encontrada.');
+  if (!programUsage) return res.status(400).send('Dados de uso do programa não fornecidos.');
+
+  // Formatar a data como "YYYY-MM-DD"
+  const today = new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }).split(' ')[0];  // Exemplo: "2024-11-30"
+
+  // Percorrer os dados de uso do programa
+  for (const [programName, usage] of Object.entries(programUsage)) {
+    const { windowTitle, usageTime } = usage;
+
+ 
+    db.get(
+      `SELECT * FROM program_usage WHERE token = ? AND program_name = ? AND window_title = ? AND timestamp = ?`,
+      [token, programName, windowTitle, today],
+      (err, row) => {
+        if (err) {
+          console.error('Erro ao verificar dados de uso do programa:', err);
+          return res.status(500).send('Erro ao verificar dados de uso.');
+        }
+
+        if (row) {
+          // Se já existe, atualize o tempo de uso
+          const newUsageTime = row.usage_time + usageTime;
+          db.run(
+            `UPDATE program_usage SET usage_time = ? WHERE token = ? AND program_name = ? AND window_title = ? AND timestamp = ?`,
+            [newUsageTime, token, programName, windowTitle, today],
+            (err) => {
+              if (err) {
+                console.error('Erro ao atualizar dados de uso do programa:', err);
+                return res.status(500).send('Erro ao atualizar dados de uso.');
+              }
+            }
+          );
+        } else {
+          // Caso contrário, insira um novo registro
+          db.run(
+            `INSERT INTO program_usage (token, program_name, window_title, usage_time, timestamp)
+             VALUES (?, ?, ?, ?, ?)`,
+            [token, programName, windowTitle, usageTime, today],
+            (err) => {
+              if (err) {
+                console.error('Erro ao salvar dados de uso do programa:', err);
+                return res.status(500).send('Erro ao salvar dados de uso.');
+              }
+            }
+          );
+        }
+      }
+    );
   }
+
+  res.send('Dados de uso do programa enviados com sucesso.');
 });
 
-app.post('/send-command', (req, res) => {
-  const { cmd } = req.body;
-  if (!cmd) {
-    return res.status(400).send('comando nao foi passado');
+app.get('/get-usage', (req, res) => {
+  const { token, date } = req.query;  // Receber token e data via query string
+ 
+
+  if (!token) {
+    return res.status(400).send('Token não fornecido.');
   }
-  command = cmd;
-  res.send('comando recebido.');
+
+  // Se uma data específica não for fornecida, usamos a data atual
+  const today = date || new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' }).split(' ')[0];  // Exemplo: "2024-11-30"
+
+  // Consultar o banco de dados para recuperar os dados de uso
+  db.all(
+    `SELECT * FROM program_usage WHERE token = ? AND timestamp = ? ORDER BY program_name, window_title`,
+    [token, today],
+    (err, rows) => {
+      if (err) {
+        console.error('Erro ao recuperar dados de uso:', err);
+        return res.status(500).send('Erro ao recuperar dados de uso.');
+      }
+
+      if (rows.length === 0) {
+        return res.status(404).send('Nenhum dado de uso encontrado para o token e data fornecidos.');
+      }
+
+      // Melhorar a apresentação dos dados: agrupar por programa
+      const groupedData = rows.reduce((acc, row) => {
+        const programKey = row.program_name;
+        if (!acc[programKey]) {
+          acc[programKey] = {
+            programName: programKey,
+            usageTime: 0,
+            windows: []
+          };
+        }
+        acc[programKey].usageTime += row.usage_time;
+        acc[programKey].windows.push({
+          windowTitle: row.window_title,
+          usageTime: row.usage_time
+        });
+        return acc;
+      }, {});
+
+      // Converter para um array e enviar a resposta
+      res.json(Object.values(groupedData));
+    }
+  );
 });
 
-app.get('/get-command', (req, res) => {
-  const cmd = command;
-  command = '';
-  res.send(cmd);
-});
 
-app.post('/receive-result', (req, res) => {
-  const { result } = req.body;
-  resultado = result;
-  console.log('resultado recebido', result);
-
-  res.send('resultado recebido');
-});
-
-app.get('/result-executed', (req, res) => {
-  res.send(resultado);
-  resultado = '';
-});
 
 const port = 3000;
 app.listen(port, () => {
-  console.log(`servidor http://localhost:${port}/`);
+  console.log(`Servidor rodando em http://localhost:${port}`);
 });
